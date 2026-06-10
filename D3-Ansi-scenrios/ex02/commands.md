@@ -1,0 +1,1 @@
+ansible-playbook baseline.yml -e "ntp_server=192.168.10.101"
