@@ -1,0 +1,260 @@
+Yes. **CSR1000v fully supports SSH, REST APIs, NETCONF, and RESTCONF**, making it ideal for **Python, Ansible, Terraform, and network automation labs**.
+
+---
+
+# 1. Configure Management IP
+
+```cisco
+conf t
+
+interface GigabitEthernet1
+ ip address 192.168.1.10 255.255.255.0
+ no shutdown
+
+end
+```
+
+Verify:
+
+```cisco
+show ip interface brief
+```
+
+---
+
+# 2. Enable SSH
+
+## Create User
+
+```cisco
+conf t
+
+username admin privilege 15 secret Cisco123!
+
+ip domain name lab.local
+
+crypto key generate rsa modulus 2048
+
+ip ssh version 2
+
+line vty 0 4
+ login local
+ transport input ssh
+
+end
+```
+
+Verify:
+
+```cisco
+show ip ssh
+```
+
+From Ubuntu:
+
+```bash
+ssh admin@192.168.1.10
+```
+
+---
+
+# 3. Enable RESTCONF API
+
+```cisco
+conf t
+
+ip http server
+ip http secure-server
+
+restconf
+
+end
+```
+
+Verify:
+
+```cisco
+show running-config | include restconf
+```
+
+---
+
+# 4. Test RESTCONF
+
+Install curl:
+
+```bash
+sudo apt install curl -y
+```
+
+Get hostname:
+
+```bash
+curl -k \
+-u admin:Cisco123! \
+-H "Accept: application/yang-data+json" \
+https://192.168.1.10/restconf/data/Cisco-IOS-XE-native:native/hostname
+```
+
+Expected:
+
+```json
+{
+  "Cisco-IOS-XE-native:hostname": "CSR1"
+}
+```
+
+---
+
+# 5. Enable NETCONF
+
+Required for Ansible and many automation tools.
+
+```cisco
+conf t
+
+netconf-yang
+
+end
+```
+
+Verify:
+
+```cisco
+show platform software yang-management process
+```
+
+Port:
+
+```text
+830/TCP
+```
+
+Test:
+
+```bash
+ssh admin@192.168.1.10 -p 830
+```
+
+---
+
+# 6. Enable GuestShell (Optional)
+
+```cisco
+guestshell enable
+```
+
+Verify:
+
+```cisco
+show guestshell
+```
+
+This allows Python scripts to run directly on the router.
+
+---
+
+# 7. Ansible Test
+
+Install:
+
+```bash
+pip install ansible pynetbox ncclient netmiko
+```
+
+Inventory:
+
+```ini
+[csr]
+192.168.1.10
+
+[csr:vars]
+ansible_user=admin
+ansible_password=Cisco123!
+ansible_network_os=ios
+ansible_connection=network_cli
+```
+
+Playbook:
+
+```yaml
+---
+- hosts: csr
+  gather_facts: no
+
+  tasks:
+    - name: Show version
+      ios_command:
+        commands:
+          - show version
+
+      register: output
+
+    - debug:
+        var: output.stdout_lines
+```
+
+Run:
+
+```bash
+ansible-playbook show_version.yml
+```
+
+---
+
+# 8. Python Netmiko Example
+
+```python
+from netmiko import ConnectHandler
+
+router = {
+    "device_type": "cisco_xe",
+    "host": "192.168.1.10",
+    "username": "admin",
+    "password": "Cisco123!"
+}
+
+conn = ConnectHandler(**router)
+
+print(conn.send_command("show ip interface brief"))
+
+conn.disconnect()
+```
+
+---
+
+# 9. Recommended Services for a Network Automation Lab
+
+```cisco
+conf t
+
+ip http server
+ip http secure-server
+restconf
+netconf-yang
+
+username admin privilege 15 secret Cisco123!
+
+ip domain name lab.local
+
+crypto key generate rsa modulus 2048
+
+ip ssh version 2
+
+line vty 0 4
+ login local
+ transport input ssh
+
+end
+
+write memory
+```
+
+Then you'll have:
+
+| Service  | Port |
+| -------- | ---- |
+| SSH      | 22   |
+| HTTPS    | 443  |
+| RESTCONF | 443  |
+| NETCONF  | 830  |
